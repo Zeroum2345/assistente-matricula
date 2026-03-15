@@ -1,0 +1,151 @@
+# docker-compose.yml — Assistente de Matrícula UFCG
+#
+# Serviços:
+#   ollama  — LLM local Qwen 2.5 (CPU ou GPU)
+#   agent   — aplicação principal (Streamlit + LangGraph)
+#   ingest  — indexador FAISS (roda uma vez e sai)
+#
+# Uso rápido:
+#   docker compose up ollama -d           # 1. sobe o LLM
+#   docker compose run --rm ingest        # 2. indexa os documentos
+#   docker compose up agent               # 3. sobe a interface
+
+version: "3.9"
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # Ollama — servidor LLM local
+  # ---------------------------------------------------------------------------
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ufcg-ollama
+    restart: unless-stopped
+    volumes:
+      - ollama_models:/root/.ollama      # persiste modelos baixados
+    ports:
+      - "11434:11434"
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+    # Para GPU NVIDIA: descomente as linhas abaixo e comente o healthcheck padrão
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # ---------------------------------------------------------------------------
+  # Pull do modelo Qwen 2.5 (roda uma vez, sai após o pull)
+  # ---------------------------------------------------------------------------
+  ollama-pull:
+    image: ollama/ollama:latest
+    container_name: ufcg-ollama-pull
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      - OLLAMA_HOST=ollama:11434
+    entrypoint: >
+      sh -c "
+        echo 'Baixando qwen2.5:7b...' &&
+        ollama pull qwen2.5:7b &&
+        echo 'Modelo pronto.'
+      "
+    volumes:
+      - ollama_models:/root/.ollama
+    restart: "no"
+
+  # ---------------------------------------------------------------------------
+  # Ingest — indexa os documentos em data/raw/ e sai
+  # ---------------------------------------------------------------------------
+  ingest:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    container_name: ufcg-ingest
+    depends_on:
+      ollama:
+        condition: service_healthy
+    volumes:
+      - ./data:/app/data                  # monta data/ do host
+      - ./logs:/app/logs
+    environment:
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - FAISS_INDEX_PATH=/app/data/faiss_index
+      - RAW_DIR=/app/data/raw
+      - EMBEDDING_MODEL=BAAI/bge-m3
+      - PYTHONPATH=/app
+    entrypoint: ["python", "ingest/indexer.py", "--reset"]
+    restart: "no"
+
+  # ---------------------------------------------------------------------------
+  # Agent — interface Streamlit principal
+  # ---------------------------------------------------------------------------
+  agent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    container_name: ufcg-agent
+    depends_on:
+      ollama:
+        condition: service_healthy
+    volumes:
+      - ./data:/app/data                  # índice FAISS gerado pelo ingest
+      - ./logs:/app/logs
+    ports:
+      - "8501:8501"
+    environment:
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - FAISS_INDEX_PATH=/app/data/faiss_index
+      - RAW_DIR=/app/data/raw
+      - EMBEDDING_MODEL=BAAI/bge-m3
+      - MCP_AUDIT_LOG=/app/logs/mcp_audit.jsonl
+      - PYTHONPATH=/app
+      - STREAMLIT_SERVER_PORT=8501
+      - STREAMLIT_SERVER_ADDRESS=0.0.0.0
+      - STREAMLIT_BROWSER_GATHER_USAGE_STATS=false
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # ---------------------------------------------------------------------------
+  # Eval — roda avaliação RAGAS e sai (uso opcional)
+  # ---------------------------------------------------------------------------
+  eval:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    container_name: ufcg-eval
+    depends_on:
+      agent:
+        condition: service_healthy
+    volumes:
+      - ./data:/app/data
+      - ./eval:/app/eval
+      - ./logs:/app/logs
+    environment:
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - FAISS_INDEX_PATH=/app/data/faiss_index
+      - PYTHONPATH=/app
+    entrypoint: ["python", "eval/run_ragas.py", "--output", "eval/results.json"]
+    restart: "no"
+    profiles:
+      - eval                              # só roda com: docker compose --profile eval up eval
+
+volumes:
+  ollama_models:                          # volume nomeado para persistir modelos Ollama

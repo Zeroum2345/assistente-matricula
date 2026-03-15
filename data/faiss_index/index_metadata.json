@@ -1,0 +1,10 @@
+{
+  "total_chunks": 697,
+  "embedding_model": "BAAI/bge-m3",
+  "chunk_size": 512,
+  "chunk_overlap": 80,
+  "indexed_at": "2026-03-15T21:12:44Z",
+  "sources": {
+    "PPC 2023.pdf": 697
+  }
+}
