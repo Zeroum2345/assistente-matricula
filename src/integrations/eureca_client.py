@@ -1,28 +1,3 @@
-# src/integrations/eureca_client.py
-# Cliente da API Eureca — UFCG
-#
-# A API Eureca (eureca.lsd.ufcg.edu.br/das/v2) é o sistema de dados acadêmicos
-# da UFCG. A autenticação é feita com credenciais do SIGAA, que retornam um
-# token JWT Bearer usado nas demais chamadas.
-#
-# Autenticação:
-#   POST https://eureca.lsd.ufcg.edu.br/autenticador/sigaa/
-#   → retorna token JWT
-#   Todas as demais chamadas: Authorization: Bearer <token>
-#
-# Endpoints utilizados (conforme Swagger em /das/v2/swagger-ui/index.html):
-#   GET /das/v2/curriculo/{curriculo}/componentes         → disciplinas do currículo
-#   GET /das/v2/curriculo/{curriculo}/componente/{codigo} → detalhes + pré-requisitos
-#   GET /das/v2/turmas?periodo=2025.1&componente=COMP3501 → turmas com horários
-#   GET /das/v2/aluno/{matricula}/historico               → histórico do aluno (requer aluno autenticado)
-#   GET /das/v2/aluno/{matricula}/vinculo                 → vínculo ativo do aluno
-#
-# Segurança:
-#   - Credenciais NUNCA são logadas
-#   - Token é armazenado em memória (não em disco)
-#   - Dados pessoais de alunos só são acessados com token do próprio aluno
-#   - Cache com TTL para reduzir chamadas à API
-
 from __future__ import annotations
 
 import logging

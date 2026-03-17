@@ -1,9 +1,3 @@
-# src/graph.py
-# LangGraph StateGraph — Assistente de Matrícula UFCG
-# Agentes: Supervisor → Retriever → Safety → Self-Check → Answerer
-#          Supervisor → Automation Agent (pré-req, conflito, trilha)
-#          Supervisor → Recusa
-
 from __future__ import annotations
 
 import json
@@ -19,7 +13,7 @@ from langgraph.graph.message import add_messages
 # Importações internas do projeto
 # ---------------------------------------------------------------------------
 from src.agents.answerer import build_answer
-from src.agents.automation import run_automation
+from src.agents.automation_eureca import run_automation_with_eureca as run_automation
 from src.agents.retriever import retrieve_chunks
 from src.agents.safety import apply_safety
 from src.agents.self_check import self_check
@@ -155,13 +149,15 @@ def node_automation(state: AgentState) -> dict:
       - trail:    gera trilha de estudos recursiva para uma disciplina-alvo
     O Automation Agent usa o MCP docstore como ferramenta de consulta.
     """
+    import os
     result = run_automation(
         automation_type=state["automation_type"],
         query=state["query"],
-        # Passa chunks se o retriever já rodou antes (pode ser chamado em conjunto)
         context_chunks=state.get("retrieved_chunks", []),
+        periodo=os.getenv("EURECA_PERIODO_PADRAO", "2026.1"),
     )
-    logger.info("[automation] type=%s  result_keys=%s", state["automation_type"], list(result.keys()))
+    logger.info("[automation] type=%s  result_keys=%s",
+                state["automation_type"], list(result.keys()))
     return {"automation_result": result}
 
 

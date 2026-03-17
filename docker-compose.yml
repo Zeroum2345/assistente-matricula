@@ -118,6 +118,7 @@ services:
     ports:
       - "8501:8501"
     environment:
+      - OLLAMA_MODEL=qwen2.5:3b
       - PYTHONPATH=/app
       - OLLAMA_BASE_URL=http://ollama:11434
       - FAISS_INDEX_PATH=/app/data/faiss_index

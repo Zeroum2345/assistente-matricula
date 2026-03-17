@@ -1,18 +1,3 @@
-# ingest/indexer.py
-# Indexador do corpus da UFCG
-#
-# Pipeline:
-#   1. Varre data/raw/ procurando PDFs e HTMLs
-#   2. Extrai texto com metadados (source, page, section, course_code)
-#   3. Aplica chunking semântico com sobreposição
-#   4. Gera embeddings com bge-m3 (HuggingFace)
-#   5. Salva índice FAISS em data/faiss_index/
-#
-# Uso:
-#   python ingest/indexer.py                  # indexa tudo em data/raw/
-#   python ingest/indexer.py --file foo.pdf   # indexa um arquivo específico
-#   python ingest/indexer.py --reset          # apaga índice anterior e reindexa
-
 from __future__ import annotations
 
 import argparse

@@ -1,12 +1,3 @@
-# src/agents/safety.py
-# Safety / Policy Agent — adiciona disclaimers e bloqueia respostas fora do escopo
-#
-# Responsabilidades:
-#   1. Detectar se a query/resposta envolve conselho pessoal ou fora do escopo
-#   2. Adicionar disclaimer padrão quando o conteúdo for sensível (ex: regulamentos)
-#   3. Bloquear completamente respostas que violem a política de escopo
-#   4. Nunca modificar o conteúdo factual — apenas adicionar avisos
-
 from __future__ import annotations
 
 import logging

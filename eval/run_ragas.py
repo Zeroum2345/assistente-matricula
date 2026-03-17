@@ -1,18 +1,3 @@
-# eval/run_ragas.py
-# Avaliação do sistema com RAGAS + métricas de automação e MCP
-#
-# Executa três baterias de avaliação:
-#   1. RAG (Q&A):    Context Precision/Recall, Faithfulness, Answer Relevancy, latência
-#   2. Automação:    taxa de sucesso, nº médio de steps, tempo médio (5 tarefas)
-#   3. MCP:          disponibilidade das tools, latência por tool
-#
-# Uso:
-#   python eval/run_ragas.py                    # avalia tudo
-#   python eval/run_ragas.py --suite rag        # só RAG
-#   python eval/run_ragas.py --suite automation # só automação
-#   python eval/run_ragas.py --suite mcp        # só MCP
-#   python eval/run_ragas.py --output eval/results.json
-
 from __future__ import annotations
 
 import argparse
@@ -34,19 +19,19 @@ logger = logging.getLogger(__name__)
 QA_DATASET: list[dict] = [
     # Pré-requisitos
     {
-        "question":         "Quais são os pré-requisitos de Redes de Computadores (COMP3501)?",
-        "ground_truth":     "Os pré-requisitos de COMP3501 são Sistemas Operacionais (COMP2401) e Fundamentos de Redes (COMP2201).",
-        "expected_sources": ["fluxograma_cc.pdf"],
+        "question":         "Quais são os pré-requisitos de Redes de Computadores?",
+        "ground_truth":     "Os pré-requisitos de Redes de Computadores são Sistemas Operacionais.",
+        "expected_sources": ["PCC 2023.pdf"],
     },
     {
         "question":         "Quais são os pré-requisitos de Compiladores?",
         "ground_truth":     "Compiladores requer Linguagens de Programação e Estruturas de Dados como pré-requisitos.",
-        "expected_sources": ["fluxograma_cc.pdf"],
+        "expected_sources": ["PCC 2023.pdf"],
     },
     {
         "question":         "Quais disciplinas são pré-requisito de Inteligência Artificial?",
         "ground_truth":     "Inteligência Artificial requer Estruturas de Dados e Algoritmos como pré-requisitos diretos.",
-        "expected_sources": ["fluxograma_cc.pdf"],
+        "expected_sources": ["PCC 2023.pdf"],
     },
     # Regulamento de matrícula
     {
@@ -57,7 +42,7 @@ QA_DATASET: list[dict] = [
     {
         "question":         "Quantos créditos são necessários para concluir o curso de Ciência da Computação?",
         "ground_truth":     "O curso de Ciência da Computação da UFCG exige o cumprimento de todos os créditos obrigatórios e optativos definidos no currículo.",
-        "expected_sources": ["fluxograma_cc.pdf", "regulamento_graduacao.pdf"],
+        "expected_sources": ["PCC 2023.pdf", "regulamento_graduacao.pdf"],
     },
     {
         "question":         "O que é crédito especial na UFCG?",
@@ -78,12 +63,12 @@ QA_DATASET: list[dict] = [
     {
         "question":         "Quais são as disciplinas obrigatórias do primeiro período de CC?",
         "ground_truth":     "No primeiro período de CC constam disciplinas introdutórias de Programação, Matemática Discreta e Cálculo.",
-        "expected_sources": ["fluxograma_cc.pdf"],
+        "expected_sources": ["PCC 2023.pdf"],
     },
     {
         "question":         "Qual a carga horária total do curso de Ciência da Computação?",
         "ground_truth":     "A carga horária total do curso de Ciência da Computação é de aproximadamente 3.200 horas.",
-        "expected_sources": ["fluxograma_cc.pdf"],
+        "expected_sources": ["PCC 2023.pdf"],
     },
     # Horários e calendário
     {
@@ -100,7 +85,7 @@ QA_DATASET: list[dict] = [
     {
         "question":         "Quantos créditos optativos são necessários em CC?",
         "ground_truth":     "O currículo de CC exige um número mínimo de créditos optativos a ser cumprido dentro das trilhas disponíveis.",
-        "expected_sources": ["fluxograma_cc.pdf"],
+        "expected_sources": ["PCC 2023.pdf"],
     },
     {
         "question":         "O que é disciplina eletiva e como difere de optativa?",
@@ -133,12 +118,12 @@ QA_DATASET: list[dict] = [
     {
         "question":         "Quais são os pré-requisitos para iniciar o TCC em CC?",
         "ground_truth":     "Para iniciar o TCC, o aluno deve ter cumprido um percentual mínimo de créditos obrigatórios, conforme o regulamento do curso.",
-        "expected_sources": ["regulamento_graduacao.pdf", "fluxograma_cc.pdf"],
+        "expected_sources": ["regulamento_graduacao.pdf", "PCC 2023.pdf"],
     },
     {
         "question":         "O estágio supervisionado é obrigatório em CC na UFCG?",
         "ground_truth":     "O estágio supervisionado pode ser obrigatório ou optativo dependendo do currículo vigente do curso de Ciência da Computação.",
-        "expected_sources": ["fluxograma_cc.pdf"],
+        "expected_sources": ["PCC 2023.pdf"],
     },
 ]
 

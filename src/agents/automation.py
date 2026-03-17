@@ -1,13 +1,3 @@
-# src/agents/automation.py
-# Automation Agent — executa os três fluxos de automação do assistente
-#
-# Fluxos:
-#   prereq:   Verifica se o aluno pode cursar disciplinas com base no que já cursou
-#   schedule: Detecta conflitos de horário entre disciplinas escolhidas
-#   trail:    Gera trilha de estudos recursiva para chegar a uma disciplina-alvo
-#
-# Todos os fluxos usam RAG (via retriever) para consultar normas e fluxogramas.
-
 from __future__ import annotations
 
 import json

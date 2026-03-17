@@ -1,13 +1,3 @@
-# src/agents/retriever.py
-# Retriever Agent — busca semântica no corpus indexado da UFCG
-#
-# Responsabilidades:
-#   1. Carregar (e cachear) o índice FAISS e os embeddings bge-m3
-#   2. Executar busca densa com score threshold
-#   3. Aplicar rerank leve por MMR (Maximal Marginal Relevance) para diversidade
-#   4. Retornar chunks enriquecidos com metadados (source, page, excerpt)
-#   5. Expandir a query quando vier de um retry do Self-Check
-
 from __future__ import annotations
 
 import logging

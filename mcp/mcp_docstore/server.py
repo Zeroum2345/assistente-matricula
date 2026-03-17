@@ -1,21 +1,3 @@
-# mcp/mcp_docstore/server.py
-# MCP Server próprio — mcp-docstore
-#
-# Expõe o corpus indexado da UFCG como ferramentas MCP padronizadas.
-# Usado pelo Automation Agent via langchain_mcp_adapters.
-#
-# Tools expostas:
-#   search_docs       — busca semântica geral no corpus
-#   get_prerequisites — pré-requisitos de uma disciplina pelo código
-#   get_schedule      — horários de uma disciplina num semestre
-#
-# Segurança:
-#   - Allowlist de tools: apenas as 3 acima (nenhuma escrita)
-#   - Acesso somente leitura ao corpus (FAISS + documentos locais)
-#   - Cada chamada é registrada com timestamp, tool e parâmetros
-#   - Sem acesso a dados pessoais (SIGAA, notas, histórico de alunos)
-#   - Sem execução de código arbitrário ou shell
-
 from __future__ import annotations
 
 import json

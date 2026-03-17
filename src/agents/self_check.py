@@ -1,12 +1,3 @@
-# src/agents/self_check.py
-# Self-Check Agent — implementação Self-RAG local com LangGraph
-#
-# Estratégia dupla:
-#   - Modelos 7B+: usa LLM para avaliar suporte das afirmações (Self-RAG completo)
-#   - Modelos 3B/1B: usa heurística por sobreposição de vocabulário (sem chamar LLM)
-#
-# A detecção é automática via variável OLLAMA_MODEL.
-
 from __future__ import annotations
 
 import json

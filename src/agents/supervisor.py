@@ -1,11 +1,3 @@
-# src/agents/supervisor.py
-# Supervisor Agent — classifica a intent do usuário e determina o tipo de automação
-#
-# Responsabilidades:
-#   1. Ler a query e decidir entre "qa", "automation" ou "refuse"
-#   2. Se "automation", identificar o sub-tipo: "prereq", "schedule" ou "trail"
-#   3. Retornar a classificação de forma determinística (temperature=0, saída estruturada)
-
 from __future__ import annotations
 
 import json

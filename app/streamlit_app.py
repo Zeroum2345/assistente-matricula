@@ -1,13 +1,3 @@
-# app/streamlit_app.py
-# Interface Streamlit do Assistente de Matrícula UFCG
-#
-# Funcionalidades:
-#   - Chat com histórico de conversa
-#   - Painel lateral com atalhos de automação
-#   - Exibição de fontes/citações em expansor colapsável
-#   - Indicador visual do fluxo percorrido no grafo (intent + self-check score)
-#   - Modo debug opcional (mostra state completo do LangGraph)
-
 from __future__ import annotations
 
 import logging
@@ -104,38 +94,12 @@ with st.sidebar:
     st.title("🎓 Assistente UFCG")
     st.caption("Matrícula · Pré-requisitos · Horários")
 
-    st.divider()
-    st.subheader("Automações rápidas")
-
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("✅ Verificar\npré-requisitos", use_container_width=True):
-            st.session_state["quick_query"] = (
-                "Verifique os pré-requisitos para as disciplinas que quero cursar. "
-                "Informe os códigos das disciplinas-alvo e as que já concluí."
-            )
-    with col2:
-        if st.button("🗓️ Conflito\nde horário", use_container_width=True):
-            st.session_state["quick_query"] = (
-                "Verifique se há conflito de horário entre as disciplinas. "
-                "Informe os códigos (ex: COMP3501, MAT2001)."
-            )
-
-    if st.button("📚 Trilha de estudos", use_container_width=True):
-        st.session_state["quick_query"] = (
-            "Gere uma trilha de estudos para chegar à disciplina-alvo. "
-            "Qual disciplina você quer cursar?"
-        )
-
-    st.divider()
     st.subheader("Exemplos de perguntas")
 
     examples = [
+        "Quero chegar na disciplina 1411348 - PROJETO EM COMPUTAÇÃO II, o que devo cursar antes?",
         "Quais são os pré-requisitos de Redes de Computadores?",
         "Como funciona o trancamento de matrícula?",
-        "Posso cursar COMP3501 se já fiz COMP2401 e COMP2201?",
-        "COMP3501 e MAT2001 têm conflito de horário no 2025.1?",
-        "Quero chegar em Inteligência Artificial. Que disciplinas devo fazer?",
         "Qual a diferença entre disciplina obrigatória e optativa?",
     ]
 
@@ -173,7 +137,7 @@ with st.sidebar:
 
 st.title("Assistente de Matrícula UFCG")
 st.caption(
-    "Pergunte sobre regulamentos, pré-requisitos e horários — "
+    "Pergunte sobre regulamentos, pré-requisitos e horários, "
     "ou use as automações na barra lateral."
 )
 

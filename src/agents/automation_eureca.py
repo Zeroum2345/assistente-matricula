@@ -1,10 +1,3 @@
-# src/agents/automation_eureca.py
-# Versão aprimorada das automações usando a API Eureca como fonte primária.
-#
-# Estratégia de dados em duas camadas:
-#   1. API Eureca  → dados oficiais em tempo real (pré-requisitos, horários)
-#   2. FAISS local → fallback se a API não retornar (corpus indexado)
-#
 # Substitui automation.py quando a Eureca estiver configurada.
 # Se EURECA_LOGIN não estiver definido, cai automaticamente para o FAISS.
 
@@ -248,26 +241,3 @@ def _run_schedule_eureca(
     except Exception as exc:
         logger.warning("[automation_eureca/schedule] Eureca falhou: %s — usando FAISS", exc)
         return _run_schedule(query, chunks, llm)
-
-
-# ---------------------------------------------------------------------------
-# Integração no graph.py
-# Para usar, substitua a importação no graph.py:
-#
-#   # Antes:
-#   from src.agents.automation import run_automation
-#
-#   # Depois:
-#   from src.agents.automation_eureca import run_automation_with_eureca as run_automation
-#
-# E no node_automation, passe o periodo extraído da query:
-#
-#   def node_automation(state: AgentState) -> dict:
-#       result = run_automation(
-#           automation_type=state["automation_type"],
-#           query=state["query"],
-#           context_chunks=state.get("retrieved_chunks", []),
-#           periodo=state.get("periodo", "2025.1"),   # novo campo no AgentState
-#       )
-#       return {"automation_result": result}
-# ---------------------------------------------------------------------------
