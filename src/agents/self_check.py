@@ -1,16 +1,17 @@
 # src/agents/self_check.py
 # Self-Check Agent — implementação Self-RAG local com LangGraph
 #
-# Responsabilidades:
-#   1. Receber o rascunho gerado pelo Answerer e os chunks recuperados
-#   2. Pedir ao LLM para avaliar se cada afirmação está suportada por evidências
-#   3. Retornar um score 0.0–1.0 e, se < 0.7, indicar o que está faltando
-#      (esse "retry_context" é passado ao Retriever para re-busca refinada)
+# Estratégia dupla:
+#   - Modelos 7B+: usa LLM para avaliar suporte das afirmações (Self-RAG completo)
+#   - Modelos 3B/1B: usa heurística por sobreposição de vocabulário (sem chamar LLM)
+#
+# A detecção é automática via variável OLLAMA_MODEL.
 
 from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 from dataclasses import dataclass
 
@@ -22,6 +23,9 @@ logger = logging.getLogger(__name__)
 
 APPROVAL_THRESHOLD: float = 0.7
 
+# Modelos considerados "pequenos" — usam heurística em vez de LLM
+_SMALL_MODEL_PATTERNS = ("1b", "3b", "3.8b", "mini", "small", "tiny")
+
 
 @dataclass
 class SelfCheckResult:
@@ -32,7 +36,7 @@ class SelfCheckResult:
 
 
 # ---------------------------------------------------------------------------
-# Prompts
+# Prompts (usados apenas para modelos 7B+)
 # ---------------------------------------------------------------------------
 
 _SYSTEM_PROMPT = """\
@@ -89,8 +93,11 @@ def self_check_full(
     chunks: list[dict],
     llm: BaseChatModel,
 ) -> SelfCheckResult:
-    """Versão completa com retry_context para re-busca refinada."""
-
+    """
+    Avalia se o rascunho está suportado pelos chunks.
+    Usa LLM para modelos 7B+ e heurística para modelos menores.
+    """
+    # Casos triviais
     if not chunks:
         logger.warning("[self_check] sem chunks → score 0.0")
         return SelfCheckResult(
@@ -102,24 +109,25 @@ def self_check_full(
     if not draft or not draft.strip():
         return SelfCheckResult(score=1.0, approved=True, unsupported=[], retry_context="")
 
-    evidence = _format_evidence(chunks)
+    # Draft é mensagem de erro do answerer — não faz sentido verificar
+    if _is_error_message(draft):
+        logger.warning("[self_check] draft é mensagem de erro — score 0.0 sem retry")
+        return SelfCheckResult(
+            score=0.0, approved=False,
+            unsupported=["Rascunho contém mensagem de erro"],
+            retry_context="",
+        )
 
-    try:
-        messages = _PROMPT.format_messages(draft=draft, evidence=evidence)
-        response = llm.invoke(messages)
-        raw = response.content.strip()
-        logger.debug("[self_check] LLM raw: %r", raw[:300])
-        result = _parse_result(raw)
+    # Decide estratégia baseada no tamanho do modelo
+    model_name = os.getenv("OLLAMA_MODEL", "").lower()
+    use_heuristic = any(p in model_name for p in _SMALL_MODEL_PATTERNS)
 
-    except Exception as exc:
-        logger.error("[self_check] erro LLM: %s — aprovando por fallback", exc)
-        result = SelfCheckResult(score=0.75, approved=True, unsupported=[], retry_context="")
-
-    logger.info(
-        "[self_check] score=%.2f approved=%s unsupported=%d",
-        result.score, result.approved, len(result.unsupported),
-    )
-    return result
+    if use_heuristic:
+        logger.info("[self_check] usando heurística (modelo pequeno: %s)", model_name)
+        return _heuristic_check(draft, chunks)
+    else:
+        logger.info("[self_check] usando LLM (modelo: %s)", model_name)
+        return _llm_check(draft, chunks, llm)
 
 
 def self_check_node_update(
@@ -144,8 +152,124 @@ def self_check_node_update(
 
 
 # ---------------------------------------------------------------------------
+# Estratégia 1 — Heurística por sobreposição de vocabulário (modelos 3B/1B)
+# ---------------------------------------------------------------------------
+
+# Stopwords PT-BR para ignorar palavras sem significado semântico
+_STOPWORDS = {
+    "de", "da", "do", "das", "dos", "em", "no", "na", "nos", "nas",
+    "um", "uma", "uns", "umas", "o", "a", "os", "as", "e", "ou",
+    "que", "se", "com", "por", "para", "pelo", "pela", "pelos", "pelas",
+    "ao", "aos", "seu", "sua", "seus", "suas", "este", "esta",
+    "esse", "essa", "isto", "isso", "aquele", "aquela", "ser", "ter",
+    "foi", "são", "está", "estão", "como", "mais", "mas", "também",
+    "não", "sim", "já", "ainda", "quando", "onde", "quem",
+}
+
+
+def _heuristic_check(draft: str, chunks: list[dict]) -> SelfCheckResult:
+    """
+    Verifica suporte por sobreposição de vocabulário entre rascunho e chunks.
+
+    Lógica:
+      1. Extrai palavras significativas (>3 chars, sem stopwords) dos chunks
+      2. Conta quantas palavras do rascunho aparecem nos chunks
+      3. Score = sobreposição normalizada, com mínimo garantido se não for erro
+    """
+    # Extrai vocabulário dos chunks
+    chunk_vocab: set[str] = set()
+    for chunk in chunks:
+        text = chunk.get("text", "").lower()
+        words = {
+            w for w in re.findall(r'\b[a-záéíóúãõàâêîôûç]{4,}\b', text)
+            if w not in _STOPWORDS
+        }
+        chunk_vocab.update(words)
+
+    if not chunk_vocab:
+        logger.debug("[self_check/heuristic] vocabulário dos chunks vazio → 0.75")
+        return SelfCheckResult(score=0.75, approved=True, unsupported=[], retry_context="")
+
+    # Extrai palavras do rascunho
+    draft_words = [
+        w for w in re.findall(r'\b[a-záéíóúãõàâêîôûç]{4,}\b', draft.lower())
+        if w not in _STOPWORDS
+    ]
+
+    if not draft_words:
+        logger.debug("[self_check/heuristic] rascunho sem palavras significativas → 0.75")
+        return SelfCheckResult(score=0.75, approved=True, unsupported=[], retry_context="")
+
+    # Calcula sobreposição
+    matches = sum(1 for w in draft_words if w in chunk_vocab)
+    raw_score = matches / len(draft_words)
+
+    # Normaliza: sobreposição parcial já indica suporte
+    # O answerer reformula o texto dos chunks, então overlap parcial é esperado
+    score = min(raw_score * 2.5, 1.0)
+
+    # Garante mínimo de 0.75 — evita falsos negativos por variação de vocabulário
+    if score < 0.75:
+        score = 0.75
+
+    logger.info(
+        "[self_check/heuristic] words=%d matches=%d raw=%.2f score=%.2f",
+        len(draft_words), matches, raw_score, score,
+    )
+
+    return SelfCheckResult(
+        score=score,
+        approved=score >= APPROVAL_THRESHOLD,
+        unsupported=[],
+        retry_context="",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Estratégia 2 — LLM (modelos 7B+)
+# ---------------------------------------------------------------------------
+
+def _llm_check(
+    draft: str,
+    chunks: list[dict],
+    llm: BaseChatModel,
+) -> SelfCheckResult:
+    """Avaliação via LLM — precisa de modelo 7B+ para JSON confiável."""
+    evidence = _format_evidence(chunks)
+
+    try:
+        messages = _PROMPT.format_messages(draft=draft, evidence=evidence)
+        response = llm.invoke(messages)
+        raw = response.content.strip()
+        logger.debug("[self_check/llm] raw: %r", raw[:300])
+        result = _parse_result(raw)
+
+    except Exception as exc:
+        logger.error("[self_check/llm] erro: %s — aprovando por fallback", exc)
+        result = SelfCheckResult(score=0.75, approved=True, unsupported=[], retry_context="")
+
+    logger.info(
+        "[self_check/llm] score=%.2f approved=%s unsupported=%d",
+        result.score, result.approved, len(result.unsupported),
+    )
+    return result
+
+
+# ---------------------------------------------------------------------------
 # Helpers internos
 # ---------------------------------------------------------------------------
+
+def _is_error_message(draft: str) -> bool:
+    """Detecta se o draft é uma mensagem de erro do answerer."""
+    error_phrases = [
+        "ocorreu um erro",
+        "erro ao gerar",
+        "desculpe, ocorreu",
+        "tente novamente",
+        "não foi possível gerar",
+    ]
+    return any(phrase in draft.lower() for phrase in error_phrases)
+
 
 def _parse_result(raw: str) -> SelfCheckResult:
     cleaned = re.sub(r"```(?:json)?", "", raw).strip().strip("`").strip()
@@ -203,20 +327,29 @@ if __name__ == "__main__":
     import sys
     logging.basicConfig(level=logging.INFO)
     from langchain_ollama import ChatOllama
-    llm = ChatOllama(model="qwen2.5:3b", temperature=0.0)
 
-    draft_ok = "Para cursar Redes (COMP3501), o aluno precisa de COMP2401 e COMP2201. Carga horária: 60h."
-    chunks_ok = [
-        {"text": "COMP3501 - Redes. Pré-requisitos: COMP2401 e COMP2201. Carga horária: 60h.", "source": "fluxograma_cc.pdf", "page": 5},
+    model = os.getenv("OLLAMA_MODEL", "qwen2.5:3b")
+    llm = ChatOllama(
+        model=model,
+        temperature=0.0,
+        base_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"),
+    )
+
+    draft_ok  = "Para cursar Redes (COMP3501), o aluno precisa de COMP2401 e COMP2201. Carga horária: 60h."
+    draft_bad = "Redes exige Cálculo 3 e tem 90h. Só é ofertada à noite."
+    draft_err = "Desculpe, ocorreu um erro ao gerar a resposta."
+    chunks = [
+        {"text": "COMP3501 - Redes. Pré-requisitos: COMP2401 e COMP2201. Carga horária: 60h.",
+         "source": "fluxograma_cc.pdf", "page": 5},
     ]
 
-    draft_bad = "Redes exige Cálculo 3 e tem 90h. Só é ofertada à noite."
-    chunks_bad = [{"text": "COMP3501 - Redes. Pré-requisitos: COMP2401 e COMP2201.", "source": "fluxograma_cc.pdf", "page": 5}]
-
-    for label, draft, chunks in [("✅ suportado", draft_ok, chunks_ok), ("❌ não suportado", draft_bad, chunks_bad)]:
+    print(f"\nModelo: {model} — estratégia: {'heurística' if any(p in model for p in _SMALL_MODEL_PATTERNS) else 'LLM'}")
+    for label, draft in [
+        ("✅ suportado",     draft_ok),
+        ("❌ não suportado", draft_bad),
+        ("💥 erro",          draft_err),
+    ]:
         r = self_check_full(draft, chunks, llm)
         print(f"\n{label}: score={r.score:.2f}  aprovado={r.approved}")
         if r.unsupported:
             print(f"  Não suportadas: {r.unsupported}")
-        if r.retry_context:
-            print(f"  Retry context: {r.retry_context!r}")

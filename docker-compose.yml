@@ -1,14 +1,19 @@
 # docker-compose.yml — Assistente de Matrícula UFCG
 #
 # Serviços:
-#   ollama  — LLM local Qwen 2.5 (CPU ou GPU)
-#   agent   — aplicação principal (Streamlit + LangGraph)
-#   ingest  — indexador FAISS (roda uma vez e sai)
+#   ollama       — servidor LLM local
+#   ollama-pull  — baixa o modelo uma vez e sai
+#   ingest       — indexa documentos e sai
+#   agent        — interface Streamlit
 #
-# Uso rápido:
-#   docker compose up ollama -d           # 1. sobe o LLM
-#   docker compose run --rm ingest        # 2. indexa os documentos
-#   docker compose up agent               # 3. sobe a interface
+# Uso recomendado (passo a passo):
+#   docker compose up ollama -d
+#   docker compose run --rm ollama-pull
+#   docker compose run --rm ingest
+#   docker compose up agent
+#
+# Uso completo (automático):
+#   docker compose up
 
 version: "3.9"
 
@@ -22,28 +27,26 @@ services:
     container_name: ufcg-ollama
     restart: unless-stopped
     volumes:
-      - ollama_models:/root/.ollama      # persiste modelos baixados
+      - ollama_models:/root/.ollama
     ports:
       - "11434:11434"
     environment:
       - OLLAMA_HOST=0.0.0.0
-    # Para GPU NVIDIA: descomente as linhas abaixo e comente o healthcheck padrão
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: 1
-    #           capabilities: [gpu]
+      - OLLAMA_KEEP_ALIVE=10m
+      # Limita paralelismo para economizar RAM em CPU
+      - OLLAMA_NUM_PARALLEL=1
+      - OLLAMA_MAX_LOADED_MODELS=1
+    # Healthcheck generoso: Ollama demora ~30s para subir em CPU
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
-      interval: 15s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
+      test: ["CMD-SHELL", "curl -sf http://localhost:11434/api/tags || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 15          # até 150s de espera total
+      start_period: 60s    # não conta falhas nos primeiros 60s
 
   # ---------------------------------------------------------------------------
-  # Pull do modelo Qwen 2.5 (roda uma vez, sai após o pull)
+  # Pull do modelo (roda uma vez, sai após o pull)
+  # Com 3.8 GiB RAM: use qwen2.5:3b (2.0 GB) em vez de 7b (4.7 GB)
   # ---------------------------------------------------------------------------
   ollama-pull:
     image: ollama/ollama:latest
@@ -52,12 +55,14 @@ services:
       ollama:
         condition: service_healthy
     environment:
-      - OLLAMA_HOST=ollama:11434
+      - OLLAMA_HOST=http://ollama:11434
     entrypoint: >
       sh -c "
-        echo 'Baixando qwen2.5:7b...' &&
-        ollama pull qwen2.5:7b &&
-        echo 'Modelo pronto.'
+        echo '=== Verificando modelo disponível ===' &&
+        ollama list &&
+        echo '=== Baixando qwen2.5:3b (2 GB — compatível com 3.8 GiB RAM) ===' &&
+        ollama pull qwen2.5:3b &&
+        echo '=== Modelo pronto. ==='
       "
     volumes:
       - ollama_models:/root/.ollama
@@ -65,6 +70,7 @@ services:
 
   # ---------------------------------------------------------------------------
   # Ingest — indexa os documentos em data/raw/ e sai
+  # Não depende do Ollama (só usa embeddings HuggingFace locais)
   # ---------------------------------------------------------------------------
   ingest:
     build:
@@ -72,18 +78,22 @@ services:
       dockerfile: Dockerfile
       target: runtime
     container_name: ufcg-ingest
+    # Ingest NÃO depende do Ollama — só usa embeddings locais (HuggingFace)
+    # Remova o depends_on abaixo se quiser rodar ingest em paralelo com o pull
     depends_on:
       ollama:
         condition: service_healthy
     volumes:
-      - ./data:/app/data                  # monta data/ do host
+      - ./data:/app/data
       - ./logs:/app/logs
+      # Cache do HuggingFace persistido para não baixar o modelo a cada run
+      - hf_cache:/root/.cache/huggingface
     environment:
-      - OLLAMA_BASE_URL=http://ollama:11434
+      - PYTHONPATH=/app
       - FAISS_INDEX_PATH=/app/data/faiss_index
       - RAW_DIR=/app/data/raw
-      - EMBEDDING_MODEL=BAAI/bge-m3
-      - PYTHONPATH=/app
+      # Modelo leve compatível com pouca RAM
+      - EMBEDDING_MODEL=sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
     entrypoint: ["python", "ingest/indexer.py", "--reset"]
     restart: "no"
 
@@ -100,30 +110,36 @@ services:
       ollama:
         condition: service_healthy
     volumes:
-      - ./data:/app/data                  # índice FAISS gerado pelo ingest
+      - ./data:/app/data
       - ./logs:/app/logs
+      - ./src:/app/src
+      - ./app:/app/app 
+      - hf_cache:/root/.cache/huggingface
     ports:
       - "8501:8501"
     environment:
+      - PYTHONPATH=/app
       - OLLAMA_BASE_URL=http://ollama:11434
       - FAISS_INDEX_PATH=/app/data/faiss_index
       - RAW_DIR=/app/data/raw
-      - EMBEDDING_MODEL=BAAI/bge-m3
+      - EMBEDDING_MODEL=sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
       - MCP_AUDIT_LOG=/app/logs/mcp_audit.jsonl
-      - PYTHONPATH=/app
+      - MCP_EURECA_AUDIT_LOG=/app/logs/mcp_eureca_audit.jsonl
       - STREAMLIT_SERVER_PORT=8501
       - STREAMLIT_SERVER_ADDRESS=0.0.0.0
       - STREAMLIT_BROWSER_GATHER_USAGE_STATS=false
+      # Desabilita watcher para evitar double-load do modelo de embeddings
+      - STREAMLIT_SERVER_FILE_WATCHER_TYPE=none
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      test: ["CMD-SHELL", "curl -sf http://localhost:8501/_stcore/health || exit 1"]
       interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
+      timeout: 15s
+      retries: 5
+      start_period: 120s   # bge-m3/MiniLM demora para carregar na 1ª vez
 
   # ---------------------------------------------------------------------------
-  # Eval — roda avaliação RAGAS e sai (uso opcional)
+  # Eval — avaliação RAGAS (uso opcional, ativado com --profile eval)
   # ---------------------------------------------------------------------------
   eval:
     build:
@@ -137,15 +153,18 @@ services:
     volumes:
       - ./data:/app/data
       - ./eval:/app/eval
-      - ./logs:/app/logs
+      - ./logs:/app/logs 
+      - hf_cache:/root/.cache/huggingface
     environment:
+      - PYTHONPATH=/app
       - OLLAMA_BASE_URL=http://ollama:11434
       - FAISS_INDEX_PATH=/app/data/faiss_index
-      - PYTHONPATH=/app
+      - EMBEDDING_MODEL=sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
     entrypoint: ["python", "eval/run_ragas.py", "--output", "eval/results.json"]
     restart: "no"
     profiles:
-      - eval                              # só roda com: docker compose --profile eval up eval
+      - eval
 
 volumes:
-  ollama_models:                          # volume nomeado para persistir modelos Ollama
+  ollama_models:   # modelos Ollama persistidos entre restarts
+  hf_cache:        # cache HuggingFace — evita baixar embeddings a cada build

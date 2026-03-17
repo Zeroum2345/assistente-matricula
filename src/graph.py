@@ -73,16 +73,14 @@ class AgentState(TypedDict):
 # LLM compartilhado (Qwen 2.5 via Ollama)
 # ---------------------------------------------------------------------------
 
+import os
+
 def get_llm(temperature: float = 0.0) -> ChatOllama:
-    """
-    Retorna o LLM Qwen 2.5.
-    temperature=0 nos agentes de classificação/verificação para máxima consistência.
-    temperature=0.3 no Answerer para respostas mais naturais.
-    """
     return ChatOllama(
-        model="qwen2.5:3b",  # troque por qwen2.5:14b se tiver GPU suficiente
+        model=os.getenv("OLLAMA_MODEL", "qwen2.5:3b"),
         temperature=temperature,
-        num_ctx=8192,          # contexto estendido para RAG
+        num_ctx=2048,
+        base_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"),
     )
 
 
@@ -226,8 +224,14 @@ def node_self_check(state: AgentState) -> dict:
         llm=llm,
     )
     logger.info("[self_check] score=%.2f  retry_count=%d", score, state.get("retry_count", 0))
-    return {"self_check_score": score}
-
+    
+    update = {"self_check_score": score}
+    
+    if score < 0.7 and state.get("retry_count", 0) < 1:
+        update["retry_count"] = state.get("retry_count", 0) + 1
+        logger.info("[self_check] agendando retry (tentativa %d)", update["retry_count"])
+    
+    return update
 
 # ---------------------------------------------------------------------------
 # Nó 6 — Resposta final: formata para o usuário
@@ -291,13 +295,17 @@ def route_self_check(state: AgentState) -> str:
       - score < 0.7 e retry_count == 0 → re-busca (volta ao retriever)
       - score < 0.7 e retry_count >= 1 → recusa (evita loop infinito)
     """
-    score = state["self_check_score"]
-    retries = state.get("retry_count", 0)
+    score     = state["self_check_score"]
+    retries   = state.get("retry_count", 0)
 
     if score >= 0.7:
         return "accept"
+    
+    # retry_count já foi incrementado pelo node_self_check
+    # se for >= 1 significa que já usamos a única tentativa
     if retries < 1:
         return "retry"
+    
     return "refuse"
 
 
@@ -435,7 +443,10 @@ def run_agent(query: str, history: list[BaseMessage] | None = None) -> str:
         "safety_message":   "",
     }
 
-    result = graph.invoke(initial_state)
+    result = graph.invoke(
+        initial_state,
+        config={"recursion_limit": 10},
+    )
     return result["final_answer"]
 
 

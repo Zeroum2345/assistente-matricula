@@ -30,46 +30,34 @@ AutomationType = Literal["prereq", "schedule", "trail"] | None
 # Prompt do Supervisor
 # ---------------------------------------------------------------------------
 
-_SYSTEM_PROMPT = """Você é o Supervisor de um assistente acadêmico da UFCG (Universidade Federal de Campina Grande).
-Sua única função é classificar a intenção da mensagem do usuário em uma das três categorias abaixo.
+_SYSTEM_PROMPT = """\
+Você é um classificador de perguntas acadêmicas da UFCG.
+Classifique a mensagem do usuário em uma das opções abaixo.
 
-=== CATEGORIAS ===
+OPÇÕES:
+- qa: perguntas sobre regulamentos, disciplinas, normas, créditos, matrícula
+- automation: pedidos de verificação (posso cursar X?, conflito de horário, trilha de estudos)
+- refuse: assuntos fora do escopo acadêmico da UFCG
 
-1. "qa"
-   Perguntas sobre regulamentos, disciplinas, currículos, pré-requisitos (informativo),
-   normas de matrícula, calendário acadêmico, créditos, equivalências.
-   Exemplos:
-   - "O que é crédito especial?"
-   - "Quantos créditos preciso para me formar em CC?"
-   - "Quais são os pré-requisitos de Cálculo 2?"
-   - "Como funciona o trancamento de matrícula?"
+EXEMPLOS:
+- "Quais são os pré-requisitos de Redes?" → qa
+- "Posso cursar COMP3501 se já fiz COMP2401?" → automation
+- "Qual é o horário da cantina?" → refuse
+- "Como funciona o trancamento?" → qa
+- "COMP3501 e MAT2001 têm conflito de horário?" → automation
+- "Quero chegar em Inteligência Artificial, o que estudar?" → automation
 
-2. "automation"
-   Pedidos para EXECUTAR uma verificação, checagem ou geração de plano.
-   Sub-tipos:
-   - "prereq"   → verificar se o aluno PODE cursar uma ou mais disciplinas com base no que já cursou
-   - "schedule" → detectar CONFLITO DE HORÁRIO entre disciplinas escolhidas
-   - "trail"    → gerar TRILHA DE ESTUDOS / sequência recomendada para chegar a uma disciplina-alvo
-   Exemplos:
-   - "Posso cursar Redes se já fiz SO e Algoritmos?" → prereq
-   - "Verifique se COMP1001, MAT2001 e COMP3002 batem no horário" → schedule
-   - "Quero chegar em Compiladores, o que devo fazer antes?" → trail
-   - "Me dê um plano para cursar IA" → trail
+REGRAS:
+1. Responda SOMENTE com este JSON, sem texto adicional, sem explicação:
+{"intent": "qa", "automation_type": null}
 
-3. "refuse"
-   Tudo que estiver FORA DO ESCOPO acadêmico da UFCG:
-   - Perguntas pessoais, notas individuais, dados do SIGAA de um aluno específico
-   - Assuntos não acadêmicos (clima, esportes, política, saúde, etc.)
-   - Perguntas que não têm resposta nos documentos públicos da UFCG
-   - Pedidos de conselho pessoal ("devo trancar o curso?")
+2. Para automation, indique o subtipo:
+{"intent": "automation", "automation_type": "prereq"}
+{"intent": "automation", "automation_type": "schedule"}
+{"intent": "automation", "automation_type": "trail"}
 
-=== REGRAS ESTRITAS ===
-- Responda SOMENTE com um objeto JSON válido, sem texto adicional, sem markdown, sem explicações.
-- Formato obrigatório:
-  {"intent": "<qa|automation|refuse>", "automation_type": "<prereq|schedule|trail|null>"}
-- "automation_type" deve ser null quando intent != "automation"
-- Em caso de dúvida entre "qa" e "refuse", prefira "qa"
-- Em caso de dúvida entre "qa" e "automation", prefira "automation" se houver verbo de ação (verificar, checar, gerar, listar conflitos, me dê um plano)
+3. automation_type deve ser null quando intent for qa ou refuse.
+4. Responda APENAS com o JSON. Nada mais.
 """
 
 _HUMAN_TEMPLATE = "Mensagem do usuário: {query}"

@@ -1,0 +1,8 @@
+[server]
+runOnSave = false
+
+[runner]
+fastReruns = false
+
+[global]
+developmentMode = false

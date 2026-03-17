@@ -177,20 +177,6 @@ st.caption(
     "ou use as automações na barra lateral."
 )
 
-# Renderiza histórico da conversa
-for entry in st.session_state["ui_history"]:
-    role    = entry["role"]
-    content = entry["content"]
-    meta    = entry.get("meta", {})
-
-    with st.chat_message(role):
-        st.markdown(content)
-
-        # Mostra metadados do agente abaixo da resposta (somente assistant)
-        if role == "assistant" and meta:
-            _render_meta(meta)
-
-
 def _render_meta(meta: dict) -> None:
     """Renderiza intent badge, self-check score e fontes colapsáveis."""
 
@@ -258,6 +244,19 @@ def _render_meta(meta: dict) -> None:
             }
             st.json(state_display)
 
+# Renderiza histórico da conversa
+for entry in st.session_state["ui_history"]:
+    role    = entry["role"]
+    content = entry["content"]
+    meta    = entry.get("meta", {})
+
+    with st.chat_message(role):
+        st.markdown(content)
+
+        # Mostra metadados do agente abaixo da resposta (somente assistant)
+        if role == "assistant" and meta:
+            _render_meta(meta)
+
 
 # ---------------------------------------------------------------------------
 # Input do usuário
@@ -305,7 +304,10 @@ if query:
                 "safety_message":    "",
             }
 
-            result = graph.invoke(initial_state)
+            result = graph.invoke(
+                initial_state,
+                config={"recursion_limit": 10},
+            )
             elapsed_ms = int((time.time() - t0) * 1000)
 
             answer = result.get("final_answer", "Não foi possível gerar uma resposta.")

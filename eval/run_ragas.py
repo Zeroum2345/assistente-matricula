@@ -271,28 +271,80 @@ def run_rag_evaluation(dataset: list[dict]) -> dict:
         "ground_truth": ground_truths,
     })
 
-    logger.info("[eval/rag] rodando métricas RAGAS...")
+    # ---------------------------------------------------------------------------
+    # Configura LLM e embeddings locais para o RAGAS (sem OpenAI)
+    # ---------------------------------------------------------------------------
+    import os
+    from langchain_ollama import ChatOllama
+    from langchain_huggingface import HuggingFaceEmbeddings
+    from ragas.llms import LangchainLLMWrapper
+    from ragas.embeddings import LangchainEmbeddingsWrapper
+
+    ollama_url  = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+    embed_model = os.getenv(
+        "EMBEDDING_MODEL",
+        "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
+    )
+
+    ragas_llm = LangchainLLMWrapper(
+        ChatOllama(
+            model=os.getenv("OLLAMA_MODEL", "qwen2.5:3b"),
+            base_url=ollama_url,
+            temperature=0.0,
+            num_ctx=4096,
+        )
+    )
+
+    ragas_embeddings = LangchainEmbeddingsWrapper(
+        HuggingFaceEmbeddings(
+            model_name=embed_model,
+            model_kwargs={"device": "cpu"},
+            encode_kwargs={"normalize_embeddings": True},
+        )
+    )
+
+    # Injeta LLM e embeddings em cada métrica explicitamente
+    for metric in [context_precision, context_recall, faithfulness, answer_relevancy]:
+        if hasattr(metric, "llm"):
+            metric.llm = ragas_llm
+        if hasattr(metric, "embeddings"):
+            metric.embeddings = ragas_embeddings
+
+    logger.info("[eval/rag] rodando métricas RAGAS com Ollama (%s) + %s...", ollama_url, embed_model)
     ragas_result = evaluate(
         ragas_dataset,
         metrics=[context_precision, context_recall, faithfulness, answer_relevancy],
+        llm=ragas_llm,
+        embeddings=ragas_embeddings,
+        raise_exceptions=False,
     )
 
     avg_latency = sum(latencies) / len(latencies) if latencies else 0
     p95_latency = sorted(latencies)[int(len(latencies) * 0.95)] if latencies else 0
 
+    def _score(key: str) -> float:
+        """Extrai média do score — RAGAS pode retornar float ou list[float]."""
+        val = ragas_result[key]
+        if isinstance(val, list):
+            valid = [v for v in val if v is not None and str(v) != "nan"]
+            return round(sum(valid) / len(valid), 4) if valid else 0.0
+        if val is None or str(val) == "nan":
+            return 0.0
+        return round(float(val), 4)
+
     result_dict = {
-        "n_queries":        len(dataset),
-        "context_precision": round(ragas_result["context_precision"], 4),
-        "context_recall":    round(ragas_result["context_recall"], 4),
-        "faithfulness":      round(ragas_result["faithfulness"], 4),
-        "answer_relevancy":  round(ragas_result["answer_relevancy"], 4),
+        "n_queries":         len(dataset),
+        "context_precision": _score("context_precision"),
+        "context_recall":    _score("context_recall"),
+        "faithfulness":      _score("faithfulness"),
+        "answer_relevancy":  _score("answer_relevancy"),
         "latency_avg_ms":    round(avg_latency),
         "latency_p95_ms":    round(p95_latency),
         "per_query":         [
             {
-                "question":    questions[i][:80],
-                "latency_ms":  latencies[i],
-                "n_contexts":  len(contexts[i]),
+                "question":   questions[i][:80],
+                "latency_ms": latencies[i],
+                "n_contexts": len(contexts[i]),
             }
             for i in range(len(questions))
         ],
@@ -401,9 +453,16 @@ def run_mcp_evaluation() -> dict:
     # Importa as tools diretamente (sem subprocesso MCP para simplicidade do eval)
     try:
         from mcp.mcp_docstore.server import search_docs, get_prerequisites, get_schedule
-    except ImportError:
-        logger.error("[eval/mcp] não foi possível importar o MCP server")
-        return {"error": "MCP server não encontrado"}
+    except ImportError as exc:
+        logger.error("[eval/mcp] não foi possível importar o MCP server: %s", exc)
+        logger.error("[eval/mcp] certifique-se de que:")
+        logger.error("  1. O índice FAISS existe em data/faiss_index/")
+        logger.error("  2. O arquivo mcp/mcp_docstore/server.py existe")
+        logger.error("  3. PYTHONPATH=. está configurado")
+        return {"error": f"ImportError: {exc}"}
+    except Exception as exc:
+        logger.error("[eval/mcp] erro ao importar MCP server: %s", exc)
+        return {"error": str(exc)}
 
     tool_tests = [
         {
@@ -516,32 +575,42 @@ def _print_summary(report: dict) -> None:
 
     if "rag" in report:
         r = report["rag"]
-        if "error" not in r:
-            print(f"\n📊 RAG ({r['n_queries']} queries)")
-            print(f"  Context Precision : {r['context_precision']:.4f}")
-            print(f"  Context Recall    : {r['context_recall']:.4f}")
-            print(f"  Faithfulness      : {r['faithfulness']:.4f}")
-            print(f"  Answer Relevancy  : {r['answer_relevancy']:.4f}")
-            print(f"  Latência média    : {r['latency_avg_ms']}ms")
-            print(f"  Latência p95      : {r['latency_p95_ms']}ms")
+        if "error" in r:
+            print(f"\n📊 RAG — erro: {r['error']}")
+        else:
+            print(f"\n📊 RAG ({r.get('n_queries', '?')} queries)")
+            print(f"  Context Precision : {r.get('context_precision', 'n/a')}")
+            print(f"  Context Recall    : {r.get('context_recall', 'n/a')}")
+            print(f"  Faithfulness      : {r.get('faithfulness', 'n/a')}")
+            print(f"  Answer Relevancy  : {r.get('answer_relevancy', 'n/a')}")
+            print(f"  Latência média    : {r.get('latency_avg_ms', 'n/a')}ms")
+            print(f"  Latência p95      : {r.get('latency_p95_ms', 'n/a')}ms")
 
     if "automation" in report:
         r = report["automation"]
-        print(f"\n⚙️  Automação ({r['n_tasks']} tarefas)")
-        print(f"  Taxa de sucesso  : {r['success_rate']:.0%} ({r['success_count']}/{r['n_tasks']})")
-        print(f"  Tempo médio      : {r['avg_elapsed_s']}s")
-        for atype, avg in r.get("avg_by_type_s", {}).items():
-            print(f"    {atype:<12}: {avg}s")
+        if "error" in r:
+            print(f"\n⚙️  Automação — erro: {r['error']}")
+        else:
+            print(f"\n⚙️  Automação ({r.get('n_tasks', '?')} tarefas)")
+            print(f"  Taxa de sucesso  : {r.get('success_rate', 0):.0%} ({r.get('success_count', '?')}/{r.get('n_tasks', '?')})")
+            print(f"  Tempo médio      : {r.get('avg_elapsed_s', 'n/a')}s")
+            for atype, avg in r.get("avg_by_type_s", {}).items():
+                print(f"    {atype:<12}: {avg}s")
 
     if "mcp" in report:
         r = report["mcp"]
-        print(f"\n🔌 MCP ({r['n_tools']} tools)")
-        print(f"  Disponibilidade  : {r['availability_rate']:.0%}")
-        print(f"  Latência média   : {r['avg_latency_s']}s")
-        print(f"  Audit log        : {r['audit_log_entries']} entradas")
-        for t in r.get("per_tool", []):
-            icon = "✅" if t["available"] else "❌"
-            print(f"  {icon} {t['tool']:<22} {t['elapsed_s']}s")
+        if "error" in r:
+            print(f"\n🔌 MCP — erro: {r['error']}")
+            print("   Verifique se o MCP server está rodando e o índice FAISS foi gerado.")
+        else:
+            print(f"\n🔌 MCP ({r.get('n_tools', '?')} tools)")
+            print(f"  Disponibilidade  : {r.get('availability_rate', 0):.0%}")
+            print(f"  Latência média   : {r.get('avg_latency_s', 'n/a')}s")
+            print(f"  Audit log        : {r.get('audit_log_entries', 0)} entradas")
+            for t in r.get("per_tool", []):
+                icon = "✅" if t.get("available") else "❌"
+                err  = f"  ({t['error']})" if t.get("error") else ""
+                print(f"  {icon} {t['tool']:<22} {t.get('elapsed_s', '?')}s{err}")
 
     print("\n" + "=" * 60)
 

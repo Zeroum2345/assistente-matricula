@@ -30,6 +30,9 @@ logger = logging.getLogger(__name__)
 # Configuração
 # ---------------------------------------------------------------------------
 
+from dotenv import load_dotenv
+load_dotenv(override=True)
+
 # Caminho do índice FAISS gerado pelo ingest/indexer.py
 FAISS_INDEX_PATH: str = os.getenv(
     "FAISS_INDEX_PATH",

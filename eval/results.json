@@ -1,0 +1,171 @@
+{
+  "generated_at": "2026-03-16T22:45:55Z",
+  "suite": "all",
+  "rag": {
+    "n_queries": 20,
+    "context_precision": 0.0,
+    "context_recall": 0.8,
+    "faithfulness": 0.45,
+    "answer_relevancy": 0.0,
+    "latency_avg_ms": 0,
+    "latency_p95_ms": 0,
+    "per_query": [
+      {
+        "question": "Quais são os pré-requisitos de Redes de Computadores (COMP3501)?",
+        "latency_ms": 0,
+        "n_contexts": 0
+      },
+      {
+        "question": "Quais são os pré-requisitos de Compiladores?",
+        "latency_ms": 0,
+        "n_contexts": 0
+      },
+      {
+        "question": "Quais disciplinas são pré-requisito de Inteligência Artificial?",
+        "latency_ms": 0,
+        "n_contexts": 0
+      },
+      {
+        "question": "Como funciona o trancamento de matrícula na UFCG?",
+        "latency_ms": 0,
+        "n_contexts": 0
+      },
+      {
+        "question": "Quantos créditos são necessários para concluir o curso de Ciência da Computação?",
+        "latency_ms": 0,
+        "n_contexts": 0
+      },
+      {
+        "question": "O que é crédito especial na UFCG?",
+        "latency_ms": 0,
+        "n_contexts": 0
+      },
+      {
+        "question": "Qual é o prazo máximo para integralização do curso de CC?",
+        "latency_ms": 0,
+        "n_contexts": 0
+      },
+      {
+        "question": "Como funciona a segunda chamada de provas na UFCG?",
+        "latency_ms": 0,
+        "n_contexts": 0
+      },
+      {
+        "question": "Quais são as disciplinas obrigatórias do primeiro período de CC?",
+        "latency_ms": 0,
+        "n_contexts": 0
+      },
+      {
+        "question": "Qual a carga horária total do curso de Ciência da Computação?",
+        "latency_ms": 0,
+        "n_contexts": 0
+      },
+      {
+        "question": "O que é período de ajuste de matrícula?",
+        "latency_ms": 0,
+        "n_contexts": 0
+      },
+      {
+        "question": "Como é calculada a média final nas disciplinas da UFCG?",
+        "latency_ms": 0,
+        "n_contexts": 0
+      },
+      {
+        "question": "Quantos créditos optativos são necessários em CC?",
+        "latency_ms": 0,
+        "n_contexts": 0
+      },
+      {
+        "question": "O que é disciplina eletiva e como difere de optativa?",
+        "latency_ms": 0,
+        "n_contexts": 0
+      },
+      {
+        "question": "Qual é o critério de aprovação por frequência na UFCG?",
+        "latency_ms": 0,
+        "n_contexts": 0
+      },
+      {
+        "question": "O que acontece se o aluno reprovar duas vezes na mesma disciplina obrigatória?",
+        "latency_ms": 0,
+        "n_contexts": 0
+      },
+      {
+        "question": "Como funciona o aproveitamento de estudos de outro curso?",
+        "latency_ms": 0,
+        "n_contexts": 0
+      },
+      {
+        "question": "É possível cursar disciplinas de outro curso como optativa?",
+        "latency_ms": 0,
+        "n_contexts": 0
+      },
+      {
+        "question": "Quais são os pré-requisitos para iniciar o TCC em CC?",
+        "latency_ms": 0,
+        "n_contexts": 0
+      },
+      {
+        "question": "O estágio supervisionado é obrigatório em CC na UFCG?",
+        "latency_ms": 0,
+        "n_contexts": 0
+      }
+    ]
+  },
+  "automation": {
+    "n_tasks": 5,
+    "success_count": 4,
+    "success_rate": 0.8,
+    "avg_elapsed_s": 0.75,
+    "avg_by_type_s": {
+      "prereq": 1.61,
+      "schedule": 0.05,
+      "trail": 0.24
+    },
+    "per_task": [
+      {
+        "id": "prereq_01",
+        "type": "prereq",
+        "success": true,
+        "elapsed_s": 2.53,
+        "description": "Pré-requisitos satisfeitos — deve aprovar",
+        "result_type": "prereq"
+      },
+      {
+        "id": "prereq_02",
+        "type": "prereq",
+        "success": false,
+        "elapsed_s": 0.69,
+        "description": "Pré-requisito faltando — deve rejeitar",
+        "result_type": "prereq"
+      },
+      {
+        "id": "schedule_01",
+        "type": "schedule",
+        "success": true,
+        "elapsed_s": 0.05,
+        "description": "Verificação de conflito — qualquer resposta estruturada é válida",
+        "result_type": "schedule"
+      },
+      {
+        "id": "trail_01",
+        "type": "trail",
+        "success": true,
+        "elapsed_s": 0.03,
+        "description": "Geração de trilha — deve retornar sequência de disciplinas",
+        "result_type": "trail"
+      },
+      {
+        "id": "trail_02",
+        "type": "trail",
+        "success": true,
+        "elapsed_s": 0.45,
+        "description": "Trilha por nome da disciplina (sem código)",
+        "result_type": "trail"
+      }
+    ]
+  },
+  "mcp": {
+    "error": "MCP server não encontrado"
+  }
+}
